@@ -8,7 +8,7 @@
     ".": "./src/clos-dispatch.js"
   },
   "scripts": {
-    "test": "node test/clos-dispatch.test.js"
+    "test": "node test/clos-dispatch-primary-default.test.js"
   },
   "repository": {
     "type": "git",
