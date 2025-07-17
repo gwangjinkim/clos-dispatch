@@ -15,6 +15,14 @@ At its most powerful, it gives you **CLOS-style hooks** to customize how functio
 You can start simple, and grow into its power.
 
 ---
+## Features
+
+- Multiple dispatch on arbitrary argument types
+- CLOS-style method combinations: `:before`, `:after`, `:around`, `:primary`
+- Extensible dispatch tree
+- Explicit fallback with `*`
+
+---
 
 ## Installation
 
@@ -77,14 +85,22 @@ class Cat {}
 
 const speak = closDispatch();
 
-// Implicit :primary — just like a normal multimethod
-// In this example a simple single dispatch
-speak[[['Dog']]] = () => "Woof!";
-speak[[['Cat']]] = () => "Meow!";
+// Register methods using .def()
+// This defines the primary method for Dog
+speak.def(['Dog'], () => "Woof!");
+
+// And this one for Cat
+speak.def(['Cat'], () => "Meow!");
 
 console.log(speak(new Dog())); // "Woof!"
 console.log(speak(new Cat())); // "Meow!"
 ```
+
+- `.def(`) takes three arguments:
+1. The dispatch signature (like `['Dog']`)
+2. The handler function
+3. Optional: the method combination type (':primary', ':before', ':around', etc.)
+- If no third argument is provided, it’s treated as :primary, matching your intention for “normal usage”.
 
 You don’t need to know Lisp or CLOS to benefit from this.
 You don’t even need to care about method types — it Just Works™.
@@ -121,9 +137,10 @@ class Email {}
 
 const print = closDispatch();
 
-print[[['PDF']]] = () => "Rendering PDF";
-print[[['WordDoc']]] = () => "Printing Word document";
-print[[['Email']]] = () => "Forwarding to email printer";
+// Define :primary methods using .def()
+print.def(['PDF'], () => "Rendering PDF");
+print.def(['WordDoc'], () => "Printing Word document");
+print.def(['Email'], () => "Forwarding to email printer");
 
 console.log(print(new PDF()));      // "Rendering PDF"
 console.log(print(new Email()));    // "Forwarding to email printer"
@@ -132,12 +149,19 @@ console.log(print(new Email()));    // "Forwarding to email printer"
 You can also match *multiple arguments*:
 
 ```js
+import { closDispatch } from 'clos-dispatch';
+
+class Dog {}
+class Cat {}
+
 const interact = closDispatch();
 
-interact[[['Dog', 'Cat']]] = () => "Dog chases cat";
-interact[[['Cat', 'Dog']]] = () => "Cat hisses at dog";
+// Define primary dispatch behavior
+interact.def(['Dog', 'Cat'], () => "Dog chases cat");
+interact.def(['Cat', 'Dog'], () => "Cat hisses at dog");
 
-console.log(interact(new Dog(), new Cat()));
+console.log(interact(new Dog(), new Cat())); // "Dog chases cat"
+console.log(interact(new Cat(), new Dog())); // "Cat hisses at dog"
 ```
 
 ---
@@ -158,18 +182,32 @@ CLOS-style method combination = **flexible composition for functions**.
 ## Example with CLOS Hooks
 
 ```js
+import { closDispatch } from 'clos-dispatch';
+
+class Dog {}
+
 const feed = closDispatch();
 
-feed[[['Dog']]] = () => "Eats dog food"; // :primary (implicitly)
+// Implicit :primary method
+feed.def(['Dog'], () => "Eats dog food");
 
-feed[[['Dog'], ':before']] = () => console.log("Dog wags tail");
-feed[[['Dog'], ':after']]  = () => console.log("Dog licks bowl");
-feed[[['Dog'], ':around']] = (callNext, dog) => {
+// :before method
+feed.def(['Dog'], () => {
+  console.log("Dog wags tail");
+}, ':before');
+
+// :after method
+feed.def(['Dog'], () => {
+  console.log("Dog licks bowl");
+}, ':after');
+
+// :around method
+feed.def(['Dog'], (callNext, dog) => {
   console.log("Opening cupboard...");
   const result = callNext(dog);
   console.log("Closing cupboard.");
   return result;
-};
+}, ':around');
 
 console.log(feed(new Dog()));
 ```
@@ -196,12 +234,15 @@ Eats dog food
 ```js
 const fn = closDispatch();
 
-// Register a handler
-fn[[['PDF']]] = (pdf) => ...           // implicit :primary
-fn[[['PDF'], ':primary']] = (pdf) => ...
-fn[[['PDF'], ':before']]  = (pdf) => ...
-fn[[['PDF'], ':after']]   = (pdf) => ...
-fn[[['PDF'], ':around']]  = (callNext, pdf) => ...
+// Register a handler (implicit :primary)
+fn.def(['PDF'], (pdf) => { ... });
+
+// Explicit method combinations:
+fn.def(['PDF'], (pdf) => { ... }, ':primary');  // same as above
+fn.def(['PDF'], (pdf) => { ... }, ':before');
+fn.def(['PDF'], (pdf) => { ... }, ':after');
+fn.def(['PDF'], (callNext, pdf) => { ... }, ':around');
+
 ```
 
 ### Method Combination Order:
@@ -227,18 +268,29 @@ Passed to every `:around` method — allows you to continue or skip the chain.
 ## Example: Animal Battle Arena
 
 ```js
+import { closDispatch } from 'clos-dispatch';
+
+class Animal {}
+class Dog extends Animal {}
+class Cat extends Animal {}
+
 const fight = closDispatch();
 
-fight[[['Dog', 'Dog']]] = () => "Dog vs Dog!";
-fight[[['Cat', 'Cat']]] = () => "Cat stare down...";
-fight[[['Animal', 'Animal'], ':around']] = (callNext, a, b) => {
+// Specific :primary methods
+fight.def(['Dog', 'Dog'], () => "Dog vs Dog!");
+fight.def(['Cat', 'Cat'], () => "Cat stare down...");
+
+// General :around method for all Animals
+fight.def(['Animal', 'Animal'], (callNext, a, b) => {
   console.log("Arena lights up");
   const result = callNext(a, b);
   console.log("Arena quiets");
   return result;
-};
+}, ':around');
 
-console.log(fight(new Dog(), new Dog()));
+// === Test ===
+console.log(fight(new Dog(), new Dog()));  // Expect log: Arena lights up, Dog vs Dog!, Arena quiets
+console.log(fight(new Cat(), new Cat()));  // Expect log: Arena lights up, Cat stare down..., Arena quiets
 ```
 
 ---
@@ -277,7 +329,7 @@ class OncologyTrial extends Trial {
 class CovidTrial extends Trial {}
 
 class Region {}
-class Europe extends Region {}
+class Europe extends Region {}   
 class USA extends Region {}
 
 
@@ -285,54 +337,44 @@ class USA extends Region {}
 
 const eligibility = closDispatch();
 
-
 // === Core fallback ===
+eligibility.def(['Patient', 'Trial', '*'], () => false);
 
-eligibility[[['Patient', 'Trial', '*']]] = () => false;
-
-
-// === Business Rule 1: Marker-based precision trial eligibility ===
-
-eligibility[[['Patient', 'OncologyTrial', '*']]] = (p, trial) => {
+// === Business Rule 1: Marker-based precision trial eligibility
+eligibility.def(['Patient', 'OncologyTrial', '*'], (p, trial) => {
   const required = trial.requiredMarker;
   return p.biomarkers?.[required] === 'positive';
-};
+});
 
-
-// === Business Rule 2: All high-risk patients excluded from COVID trials in Europe ===
-
-eligibility[[['Patient', 'CovidTrial', 'Europe']]] = (p) => {
+// === Business Rule 2: Exclude high-risk patients from COVID trials in Europe
+eligibility.def(['Patient', 'CovidTrial', 'Europe'], (p) => {
   return p.risk !== 'high';
-};
+});
 
-
-// === :before for warning on missing biomarker info ===
-
-eligibility[[['Patient', 'OncologyTrial', '*'], ':before']] = (p, trial) => {
+// === :before — warn on missing biomarker info
+eligibility.def(['Patient', 'OncologyTrial', '*'], (p, trial) => {
   const marker = trial.requiredMarker;
   if (!(marker in (p.biomarkers || {}))) {
     console.warn(`!! Patient missing biomarker info for ${marker}`);
   }
-};
+}, ':before');
 
-
-// === :around for audit + decision override ===
-
-eligibility[[['Patient', 'Trial', '*'], ':around']] = (callNext, p, t, r) => {
+// === :around — audit + override for low-risk COVID patients
+eligibility.def(['Patient', 'Trial', '*'], (callNext, p, t, r) => {
   console.log(`Evaluating ${t.constructor.name} for ${p.sex}, ${p.age}y with ${p.disease}`);
   const result = callNext(p, t, r);
 
   if (p.risk === 'low' && t instanceof CovidTrial) {
     console.log('Note: low-risk override for COVID trial');
-    return true; // override
+    return true;
   }
 
   console.log(result ? 'Eligible' : 'Not eligible');
   return result;
-};
+}, ':around');
 
 
-// ==== Realistic Scenario ====
+// ==== Scenario ====
 
 const alice = new Patient({
   age: 45,
@@ -367,10 +409,10 @@ const us = new USA();
 
 // ==== Try it ====
 
-console.log(eligibility(alice, trial1, eu)); // HER2+ breast cancer → true
-console.log(eligibility(bob, trial1, eu));   // HER2- → false
-console.log(eligibility(bob, trial2, eu));   // high risk → false
-console.log(eligibility(clara, trial2, eu)); // low-risk override → true
+console.log(eligibility(alice, trial1, eu)); // → true
+console.log(eligibility(bob, trial1, eu));   // → false
+console.log(eligibility(bob, trial2, eu));   // → false
+console.log(eligibility(clara, trial2, eu)); // → true (override)
 ```
 
 Output:
@@ -416,23 +458,21 @@ class Asia extends Region {}
 class NeuroTrial extends Trial {
   constructor({ requiresMRI }) {
     super();
-    this.requiresMRI = requiresMRI; // boolean
+    this.requiresMRI = requiresMRI;
   }
 }
 
-// === Business Rule 3: NeuroTrials in Asia require an MRI result ===
-
-eligibility[[['Patient', 'NeuroTrial', 'Asia']]] = (p, trial) => {
+// === Business Rule 3: NeuroTrials in Asia require an MRI result
+eligibility.def(['Patient', 'NeuroTrial', 'Asia'], (p, trial) => {
   return !trial.requiresMRI || p.biomarkers?.MRI === 'done';
-};
+});
 
-// === :before to warn about missing MRI data ===
-
-eligibility[[['Patient', 'NeuroTrial', 'Asia'], ':before']] = (p, trial) => {
+// === :before — warn about missing MRI info
+eligibility.def(['Patient', 'NeuroTrial', 'Asia'], (p, trial) => {
   if (trial.requiresMRI && !('MRI' in (p.biomarkers || {}))) {
     console.warn(`!! Missing MRI data for neuro trial`);
   }
-};
+}, ':before');
 ```
 
 ### Apply the extension:
@@ -464,9 +504,10 @@ const neuroNoMRI = new NeuroTrial({ requiresMRI: false });
 const asia = new Asia();
 
 // ==== Apply it ====
-console.log(eligibility(dave, neuroMRI, asia));     // MRI done → true
-console.log(eligibility(erin, neuroMRI, asia));     // MRI missing → false
-console.log(eligibility(erin, neuroNoMRI, asia));   // MRI not required → true
+
+console.log(eligibility(dave, neuroMRI, asia));     // → true
+console.log(eligibility(erin, neuroMRI, asia));     // → false (missing MRI)
+console.log(eligibility(erin, neuroNoMRI, asia));   // → true (MRI not required)
 ```
 
 Expected output:
@@ -492,25 +533,37 @@ true
 ## Error Handling
 
 ```js
+const sum = closDispatch();
+
+sum.def(['Number', 'Number'], (a, b) => a + b);
+
 try {
-  const sum = closDispatch();
-  sum[[['Number', 'Number']]] = (a, b) => a + b;
-  console.log(sum("hi", 3));
+  console.log(sum("hi", 3)); // Should trigger no match
 } catch (e) {
-  console.log("Error:", e.message); // No matching method for given types
+  console.log("Error:", e.message); // → No matching method for given types
 }
 ```
+
+Expected output:
+```bash
+Error: No matching method for given types: String, Number
+```
+
+This shows that your dispatch system safely throws errors when a call is made with arguments for which no method is defined. Let me know if you want to support fallbacks like wildcards ('*') or default handlers next.
 
 ---
 
 ## Project Structure
 
-```
+```bash
 clos-dispatch/
-├── src/clos-dispatch.js
-├── tests/clos-dispatch.test.js
-├── README.md
-├── package.json
+├─package.json
+├─README.md
+├─src
+│  └─clos-dispatch.js
+└─tests
+    ├─clos-dispatch-primary-default.test.js
+    └─eligibility-extension.test.js
 ```
 
 ---
