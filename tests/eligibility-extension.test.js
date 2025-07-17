@@ -148,3 +148,28 @@ const asia = new Asia();
 console.log(eligibility(dave, neuroMRI, asia));     // true
 console.log(eligibility(erin, neuroMRI, asia));     // false
 console.log(eligibility(erin, neuroNoMRI, asia));   // true
+
+
+/*
+# Base Tests
+1. eligibility(alice, trial1, eu) → true
+- Alice has HER2 = positive, and the trial requires HER2 → eligible.
+2. eligibility(bob, trial1, eu) → false
+- Bob has HER2 = negative, so not eligible for HER2+ oncology trial.
+3. eligibility(bob, trial2, eu) → false
+- High-risk patients are excluded from COVID trials in Europe.
+4. eligibility(clara, trial2, eu) → true
+- Clara is low-risk → special override in :around.
+
+⸻
+
+# Extended Tests (Asia + NeuroTrial)
+5. eligibility(dave, neuroMRI, asia) → true
+- Dave has MRI = done and the trial requires it → eligible.
+6. eligibility(erin, neuroMRI, asia)
+→ warning + false
+- !! Missing MRI data for neuro trial → this comes from the :before hook.
+- Erin has no MRI biomarker, but it’s required → not eligible.
+7. eligibility(erin, neuroNoMRI, asia) → true
+- This trial does not require MRI, so Erin is eligible despite missing data.
+*/
