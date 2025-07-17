@@ -8,7 +8,9 @@
     ".": "./src/clos-dispatch.js"
   },
   "scripts": {
-    "test": "node test/clos-dispatch-primary-default.test.js"
+    "test": "npm run test:primary && npm run test:eligibility",
+    "test:primary": "node tests/clos-dispatch-primary-default.test.js",
+    "test:eligibility": "node tests/eligibility-extension.test.js"
   },
   "repository": {
     "type": "git",
@@ -26,7 +28,7 @@
     "name": "Gwang-Jin Kim",
     "email": "gwang.jin.kim.phd@gmail.com",
     "url": "https://github.com/gwangjinkim"
-  ,}
+  },
   "license": "MIT",
   "devDependencies": {}
 }
