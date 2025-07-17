@@ -1,62 +1,76 @@
 // tests/clos-dispatch-primary-default.test.js
 
-
-/*
-What It Covers:
-- Implicit :primary registration
-- Mixing implicit and explicit methods
-- Execution order with :before, :after, :around
-- callNext() usage
-- Error handling for unknown types
-*/
-
-
-
 import { closDispatch } from '../src/clos-dispatch.js';
 
+// Domain types
 class Dog {}
 class Cat {}
 class Animal {}
 
-console.log("=== Primary Default Behavior Tests ===");
+console.log("\n=== Basic Primary Behavior ===");
 
 const greet = closDispatch();
 
-// Implicit :primary
-console.log("\n-- Registering implicit :primary --");
+// Implicit :primary methods (no :primary needed for default usage)
 greet[[['Dog']]] = () => "Woof! (implicit)";
 greet[[['Cat']]] = () => "Meow! (implicit)";
 
-console.assert(greet(new Dog()) === "Woof! (implicit)", "Dog greeting failed");
-console.assert(greet(new Cat()) === "Meow! (implicit)", "Cat greeting failed");
+console.assert(greet(new Dog()) === "Woof! (implicit)", "X Dog greeting failed");
+console.assert(greet(new Cat()) === "Meow! (implicit)", "X Cat greeting failed");
 
-// Mixing explicit :primary and implicit :primary
-console.log("\n-- Mixing explicit and implicit --");
+// Fallback for superclass
 greet[[['Animal'], ':primary']] = () => "Generic animal sound";
-console.assert(greet(new Animal()) === "Generic animal sound", "Animal greeting failed");
+console.assert(greet(new Animal()) === "Generic animal sound", "X Animal fallback failed");
 
-// Add :before and :after
-console.log("\n-- With :before and :after --");
-greet[[['Dog'], ':before']] = () => console.log("🐶 Dog is sniffing...");
-greet[[['Dog'], ':after']] = () => console.log("🐾 Dog walks away.");
+console.log("OK Primary dispatch tests passed");
 
-console.log(greet(new Dog()));
 
-// Add :around method
-console.log("\n-- With :around wrapping --");
+
+// === Add side-effecting methods to observe order ===
+
+console.log("\n=== :before and :after Method Combination ===");
+
+let log = [];
+
+greet[[['Dog'], ':before']] = () => log.push("Before Dog");
+greet[[['Dog'], ':after']]  = () => log.push("After Dog");
+
+let result = greet(new Dog());
+console.assert(result === "Woof! (implicit)", "X greet Dog with before/after failed");
+console.assert(log.join(' | ') === "Before Dog | After Dog", "X Order mismatch: " + log.join(' | '));
+
+console.log("OK :before and :after order correct");
+
+
+
+// === Wrap with :around ===
+
+console.log("\n=== :around Wrapping and callNext ===");
+
+log = [];
+
 greet[[['Dog'], ':around']] = (callNext, a) => {
-  console.log("✨ Preparing to greet...");
+  log.push("Around Start");
   const result = callNext(a);
-  console.log("✨ Greeting done.");
-  return result;
+  log.push("Around End");
+  return `${result}`;
 };
 
-console.log(greet(new Dog()));
+result = greet(new Dog());
+console.assert(result === "Woof! (implicit)", "X Around failed to wrap");
+console.assert(log.join(' | ') === "Around Start | Before Dog | After Dog | Around End", "X Around order incorrect: " + log.join(' | '));
 
-// Test fallback error handling
-console.log("\n-- Error for unknown type --");
+console.log("OK :around wrapping works");
+
+
+
+// === Error case ===
+
+console.log("\n=== Error Case: Unknown Types ===");
+
 try {
-  greet(42);
+  greet(42); // primitive, no class match
+  console.assert(false, "Should have thrown an error for unknown type");
 } catch (e) {
-  console.log("Caught expected error:", e.message);
+  console.log("OK Caught expected error:", e.message);
 }

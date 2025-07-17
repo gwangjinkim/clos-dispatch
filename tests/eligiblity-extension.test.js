@@ -4,6 +4,7 @@
 import { closDispatch } from '../src/clos-dispatch.js';
 
 // ==== Domain Model (Base) ====
+
 class Patient {
   constructor({ age, sex, disease, biomarkers, risk }) {
     this.age = age;
@@ -27,26 +28,25 @@ class Region {}
 class Europe extends Region {}
 class USA extends Region {}
 
+
 // ==== Dispatcher Setup ====
+
 const eligibility = closDispatch();
 
-// === Core Rules ===
 
-// Fallback
+// ==== Rules ====
+
 eligibility[[['Patient', 'Trial', '*']]] = () => false;
 
-// Oncology Trial: requires biomarker match
 eligibility[[['Patient', 'OncologyTrial', '*']]] = (p, trial) => {
   const required = trial.requiredMarker;
   return p.biomarkers?.[required] === 'positive';
 };
 
-// COVID Trial: exclude high risk in Europe
 eligibility[[['Patient', 'CovidTrial', 'Europe']]] = (p) => {
   return p.risk !== 'high';
 };
 
-// :before for biomarker warnings
 eligibility[[['Patient', 'OncologyTrial', '*'], ':before']] = (p, trial) => {
   const marker = trial.requiredMarker;
   if (!(marker in (p.biomarkers || {}))) {
@@ -54,7 +54,6 @@ eligibility[[['Patient', 'OncologyTrial', '*'], ':before']] = (p, trial) => {
   }
 };
 
-// :around for audit and low-risk override
 eligibility[[['Patient', 'Trial', '*'], ':around']] = (callNext, p, t, r) => {
   console.log(`Evaluating ${t.constructor.name} for ${p.sex}, ${p.age}y with ${p.disease}`);
   const result = callNext(p, t, r);
@@ -64,11 +63,13 @@ eligibility[[['Patient', 'Trial', '*'], ':around']] = (callNext, p, t, r) => {
     return true;
   }
 
-  console.log(result ? '✔ Eligible' : '❌ Not eligible');
+  console.log(result ? 'Eligible' : 'Not eligible');
   return result;
 };
 
+
 // ==== Base Test Cases ====
+
 const alice = new Patient({
   age: 45,
   sex: 'F',
@@ -104,7 +105,8 @@ console.log(eligibility(bob, trial1, eu));   // false — HER2- cancer
 console.log(eligibility(bob, trial2, eu));   // false — high risk covid EU
 console.log(eligibility(clara, trial2, eu)); // true — low-risk override
 
-// === EXTENSION: Add Asia Region and NeuroTrial ===
+
+// ==== EXTENSION: Asia + NeuroTrial ====
 
 class Asia extends Region {}
 class NeuroTrial extends Trial {
@@ -114,19 +116,19 @@ class NeuroTrial extends Trial {
   }
 }
 
-// New rule: NeuroTrial in Asia requires MRI (if flagged)
 eligibility[[['Patient', 'NeuroTrial', 'Asia']]] = (p, trial) => {
   return !trial.requiresMRI || p.biomarkers?.MRI === 'done';
 };
 
-// :before warning for MRI missing
-gelibility[[['Patient', 'NeuroTrial', 'Asia'], ':before']] = (p, trial) => {
+eligibility[[['Patient', 'NeuroTrial', 'Asia'], ':before']] = (p, trial) => {
   if (trial.requiresMRI && !('MRI' in (p.biomarkers || {}))) {
     console.warn(`!! Missing MRI data for neuro trial`);
   }
 };
 
+
 // ==== Extended Test Cases ====
+
 const dave = new Patient({
   age: 50,
   sex: 'M',
