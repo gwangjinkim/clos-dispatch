@@ -1,4 +1,4 @@
-# clos-dispatch
+# clos-dispatch v0.1.0
 
 Elegant multiple dispatch for JavaScript — with optional CLOS-style method combinations.
 
