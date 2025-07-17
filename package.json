@@ -1,0 +1,32 @@
+{
+  "name": "clos-dispatch",
+  "version": "0.1.0",
+  "description": "Elegant multiple dispatch for JavaScript with CLOS-style method combinations",
+  "main": "src/clos-dispatch.js",
+  "type": "module",
+  "exports": {
+    ".": "./src/clos-dispatch.js"
+  },
+  "scripts": {
+    "test": "node test/clos-dispatch.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gwangjinkim/clos-dispatch"
+  },
+  "keywords": [
+    "multiple dispatch",
+    "CLOS",
+    "method combination",
+    "JavaScript",
+    "functional",
+    "generic functions"
+  ],
+  "author": {
+    "name": "Gwang-Jin Kim",
+    "email": "gwang.jin.kim.phd@gmail.com",
+    "url": "https://github.com/gwangjinkim"
+  ,}
+  "license": "MIT",
+  "devDependencies": {}
+}
