@@ -1,113 +1,85 @@
 // clos-dispatch.js
-// Elegant multiple dispatch for JavaScript with CLOS-style method combinations
 
 export function closDispatch() {
-  const methods = [];
+  const methods = new Map();
 
-  function getClassName(obj) {
-    if (obj === null || obj === undefined) return '*';
-    return obj.constructor?.name || typeof obj;
-  }
-
-  function getPrototypeChain(cls) {
-    const chain = [];
-    while (cls && cls.name) {
-      chain.push(cls.name);
-      cls = Object.getPrototypeOf(cls);
+  function keyFor(selector, qualifier = ':primary') {
+    if (!Array.isArray(selector)) {
+      throw new Error('Selector must be an array of types');
     }
-    return chain;
+    return JSON.stringify({ selector, qualifier });
   }
 
-  function* expandTypes(objs) {
-    const chains = objs.map(obj => getPrototypeChain(obj?.constructor || Object));
-    const total = chains.length;
-
-    function* recurse(path = [], depth = 0) {
-      if (depth === total) {
-        yield path;
-        return;
-      }
-      for (const name of chains[depth]) {
-        yield* recurse([...path, name], depth + 1);
-      }
-      yield* recurse([...path, '*'], depth + 1);
-    }
-
-    yield* recurse();
-  }
-
-  function call(...args) {
-    const key = args.map(getClassName);
-
-    const candidates = methods
-      .filter(([pattern]) => pattern.length === key.length)
-      .filter(([pattern]) => pattern.every((t, i) => t === '*' || t === key[i]))
+  function resolveKey(keys, objTypes) {
+    // Rank by specificity: number of exact class matches (not '*')
+    const ranked = keys
+      .map((k) => ({ key: k, parsed: JSON.parse(k) }))
+      .filter(({ parsed }) => {
+        const sel = parsed.selector;
+        return sel.length === objTypes.length && sel.every((type, i) => type === '*' || type === objTypes[i]);
+      })
       .sort((a, b) => {
-        const aScore = a[0].filter(t => t !== '*').length;
-        const bScore = b[0].filter(t => t !== '*').length;
-        return bScore - aScore;
+        const score = (s) => s.parsed.selector.filter((t) => t !== '*').length;
+        return score(b) - score(a); // more specific first
       });
 
-    const arounds = methods.filter(([pattern, type]) => type === ':around' && pattern.length === args.length)
-      .sort((a, b) => {
-        const aScore = a[0].filter(t => t !== '*').length;
-        const bScore = b[0].filter(t => t !== '*').length;
-        return bScore - aScore;
-      });
+    return ranked.map((r) => r.key);
+  }
 
-    let callNext = () => {
-      for (const [pattern, , fn] of candidates) {
-        if (pattern.every((t, i) => t === '*' || t === key[i])) {
-          return fn(...args);
-        }
-      }
-      throw new Error('No applicable method found');
-    };
+  function dispatcher(...args) {
+    const types = args.map((x) => x?.constructor?.name ?? typeof x);
 
-    for (const [pattern, , fn] of arounds) {
-      if (pattern.every((t, i) => t === '*' || t === key[i])) {
-        const prev = callNext;
-        callNext = () => fn(prev, ...args);
-      }
+    const allKeys = [...methods.keys()];
+    const primaries = resolveKey(
+      allKeys.filter((k) => JSON.parse(k).qualifier === ':primary'),
+      types
+    );
+
+    const key = primaries[0];
+    if (!key) {
+      throw new Error(`No primary method found for (${types.join(', ')})`);
     }
 
-    const befores = methods.filter(([pattern, type]) => type === ':before' && pattern.length === args.length);
-    for (const [pattern, , fn] of befores) {
-      if (pattern.every((t, i) => t === '*' || t === key[i])) {
-        fn(...args);
-      }
+    const befores = resolveKey(
+      allKeys.filter((k) => JSON.parse(k).qualifier === ':before'),
+      types
+    );
+    for (const k of befores.reverse()) {
+      methods.get(k)(...args);
     }
 
-    const result = callNext();
+    const arounds = resolveKey(
+      allKeys.filter((k) => JSON.parse(k).qualifier === ':around'),
+      types
+    );
 
-    const afters = methods.filter(([pattern, type]) => type === ':after' && pattern.length === args.length);
-    for (const [pattern, , fn] of afters) {
-      if (pattern.every((t, i) => t === '*' || t === key[i])) {
-        fn(...args);
-      }
+    let final = () => methods.get(key)(...args);
+    for (const k of arounds) {
+      const prev = final;
+      final = () => methods.get(k)(prev, ...args);
+    }
+
+    const result = final();
+
+    const afters = resolveKey(
+      allKeys.filter((k) => JSON.parse(k).qualifier === ':after'),
+      types
+    );
+    for (const k of afters) {
+      methods.get(k)(...args);
     }
 
     return result;
   }
 
-  return new Proxy(call, {
-    set(_, key, value) {
-      if (typeof key === 'symbol') return false;
-      const parsed = JSON.parse(key);
-      if (!Array.isArray(parsed)) throw new Error("Invalid method registration key");
-      const type = parsed.length > 1 && typeof parsed[1] === 'string' && parsed[1].startsWith(':') ? parsed[1] : ':primary';
-      const pattern = parsed[0];
-      methods.push([pattern, type, value]);
-      return true;
-    },
-    get(target, prop) {
-      if (prop === 'add') {
-        return (types, fn, kind = ':primary') => {
-          methods.push([types, kind, fn]);
-        };
-      }
-      return target[prop];
+  dispatcher.def = function(selector, fn, qualifier = ':primary') {
+    const key = keyFor(selector, qualifier);
+    if (methods.has(key)) {
+      throw new Error(`Method already defined for ${key}`);
     }
-  });
-}
+    methods.set(key, fn);
+    return dispatcher;
+  };
 
+  return dispatcher;
+}

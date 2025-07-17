@@ -1,5 +1,4 @@
 // tests/eligibility-extension.test.js
-// Demonstrates extending the eligibility system with new Region, Trial, and Rules
 
 import { closDispatch } from '../src/clos-dispatch.js';
 
@@ -36,25 +35,25 @@ const eligibility = closDispatch();
 
 // ==== Rules ====
 
-eligibility[[['Patient', 'Trial', '*']]] = () => false;
+eligibility.def(['Patient', 'Trial', '*'], () => false);
 
-eligibility[[['Patient', 'OncologyTrial', '*']]] = (p, trial) => {
+eligibility.def(['Patient', 'OncologyTrial', '*'], (p, trial) => {
   const required = trial.requiredMarker;
   return p.biomarkers?.[required] === 'positive';
-};
+});
 
-eligibility[[['Patient', 'CovidTrial', 'Europe']]] = (p) => {
+eligibility.def(['Patient', 'CovidTrial', 'Europe'], (p) => {
   return p.risk !== 'high';
-};
+});
 
-eligibility[[['Patient', 'OncologyTrial', '*'], ':before']] = (p, trial) => {
+eligibility.def(['Patient', 'OncologyTrial', '*'], (p, trial) => {
   const marker = trial.requiredMarker;
   if (!(marker in (p.biomarkers || {}))) {
     console.warn(`!! Patient missing biomarker info for ${marker}`);
   }
-};
+}, ':before');
 
-eligibility[[['Patient', 'Trial', '*'], ':around']] = (callNext, p, t, r) => {
+eligibility.def(['Patient', 'Trial', '*'], (callNext, p, t, r) => {
   console.log(`Evaluating ${t.constructor.name} for ${p.sex}, ${p.age}y with ${p.disease}`);
   const result = callNext(p, t, r);
 
@@ -65,7 +64,7 @@ eligibility[[['Patient', 'Trial', '*'], ':around']] = (callNext, p, t, r) => {
 
   console.log(result ? 'Eligible' : 'Not eligible');
   return result;
-};
+}, ':around');
 
 
 // ==== Base Test Cases ====
@@ -100,10 +99,10 @@ const trial2 = new CovidTrial();
 const eu = new Europe();
 const us = new USA();
 
-console.log(eligibility(alice, trial1, eu)); // true — HER2+ cancer
-console.log(eligibility(bob, trial1, eu));   // false — HER2- cancer
-console.log(eligibility(bob, trial2, eu));   // false — high risk covid EU
-console.log(eligibility(clara, trial2, eu)); // true — low-risk override
+console.log(eligibility(alice, trial1, eu)); // true
+console.log(eligibility(bob, trial1, eu));   // false
+console.log(eligibility(bob, trial2, eu));   // false
+console.log(eligibility(clara, trial2, eu)); // true
 
 
 // ==== EXTENSION: Asia + NeuroTrial ====
@@ -116,18 +115,15 @@ class NeuroTrial extends Trial {
   }
 }
 
-eligibility[[['Patient', 'NeuroTrial', 'Asia']]] = (p, trial) => {
+eligibility.def(['Patient', 'NeuroTrial', 'Asia'], (p, trial) => {
   return !trial.requiresMRI || p.biomarkers?.MRI === 'done';
-};
+});
 
-eligibility[[['Patient', 'NeuroTrial', 'Asia'], ':before']] = (p, trial) => {
+eligibility.def(['Patient', 'NeuroTrial', 'Asia'], (p, trial) => {
   if (trial.requiresMRI && !('MRI' in (p.biomarkers || {}))) {
     console.warn(`!! Missing MRI data for neuro trial`);
   }
-};
-
-
-// ==== Extended Test Cases ====
+}, ':before');
 
 const dave = new Patient({
   age: 50,
@@ -149,6 +145,6 @@ const neuroMRI = new NeuroTrial({ requiresMRI: true });
 const neuroNoMRI = new NeuroTrial({ requiresMRI: false });
 const asia = new Asia();
 
-console.log(eligibility(dave, neuroMRI, asia));     // true — MRI done
-console.log(eligibility(erin, neuroMRI, asia));     // false — MRI missing
-console.log(eligibility(erin, neuroNoMRI, asia));   // true — MRI not required
+console.log(eligibility(dave, neuroMRI, asia));     // true
+console.log(eligibility(erin, neuroMRI, asia));     // false
+console.log(eligibility(erin, neuroNoMRI, asia));   // true
